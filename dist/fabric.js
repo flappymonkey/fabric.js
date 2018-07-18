@@ -4352,7 +4352,15 @@ fabric.ElementsParser.prototype.createObjects = function() {
 };
 
 fabric.ElementsParser.prototype.createObject = function(el, index) {
-  var klass = fabric[fabric.util.string.capitalize(el.tagName.replace('svg:', ''))];
+  var tagName = fabric.util.string.capitalize(el.tagName.replace("svg:", ""));
+  if (el.children && el.children.length) {
+      for (var i = 0, l = el.children.length; i < l; i++) {
+          if (el.children[i].tagName == 'tspan') {
+              tagName = 'IText';
+          }
+      }
+  }
+  var klass = fabric[tagName];
   if (klass && klass.fromElement) {
     try {
       this._createObject(klass, el, index);
@@ -25632,6 +25640,8 @@ fabric.Image.filters.BaseFilter.fromObject = function(object, callback) {
 
 (function() {
 
+  var fabric = global.fabric || (global.fabric = { }),
+      clone = fabric.util.object.clone;
   function parseDecoration(object) {
     if (object.textDecoration) {
       object.textDecoration.indexOf('underline') > -1 && (object.underline = true);
@@ -26143,6 +26153,98 @@ fabric.Image.filters.BaseFilter.fromObject = function(object, callback) {
       }
     }
     fabric.Object._fromObject('IText', object, callback, 'text');
+  };
+
+  fabric.IText.fromElement = function(element, callback, options) {
+    if (!element) {
+        return callback(null);
+    }
+    var parsedAttributes = fabric.parseAttributes(element, fabric.Text.ATTRIBUTE_NAMES), parsedAnchor = parsedAttributes.textAnchor || "left";
+    options = fabric.util.object.extend(options ? clone(options) : {}, parsedAttributes);
+    options.top = options.top || 0;
+    options.left = options.left || 0;
+    if (parsedAttributes.textDecoration) {
+        var textDecoration = parsedAttributes.textDecoration;
+        if (textDecoration.indexOf("underline") !== -1) {
+            options.underline = true;
+        }
+        if (textDecoration.indexOf("overline") !== -1) {
+            options.overline = true;
+        }
+        if (textDecoration.indexOf("line-through") !== -1) {
+            options.linethrough = true;
+        }
+        delete options.textDecoration;
+    }
+    if ("dx" in parsedAttributes) {
+        options.left += parsedAttributes.dx;
+    }
+    if ("dy" in parsedAttributes) {
+        options.top += parsedAttributes.dy;
+    }
+    if (!("fontSize" in options)) {
+        options.fontSize = fabric.Text.DEFAULT_SVG_FONT_SIZE;
+    }
+    var textContent = "";
+    if (!("textContent" in element)) {
+        if ("firstChild" in element && element.firstChild !== null) {
+            if ("data" in element.firstChild && element.firstChild.data !== null) {
+                textContent = element.firstChild.data;
+            }
+        }
+    } else {
+        textContent = element.textContent;
+    }
+    var styles = {};
+    var lines = [];
+    var textLines = [];
+    var former_top = null;
+    var init = -1;
+    for (var i = 0, l = element.children.length; i < l; i++) {
+        var el = element.children[i];
+        var _parsedAttributes = fabric.parseAttributes(el, fabric.Text.ATTRIBUTE_NAMES);
+        if (_parsedAttributes.top !== former_top) {
+            former_top = _parsedAttributes.top;
+            lines[++init] = [_parsedAttributes];
+            textLines[init] = el.textContent;
+        } else {
+            textLines[init] += el.textContent;
+            lines[init].push(_parsedAttributes);
+        }
+        var text = el.textContent.trim();
+        for (var j = 1, length = text.length; j < length; j++) {
+            lines[init].push(_parsedAttributes);
+        }
+    }
+    textContent = "";
+    var spanLeft = 0, spanTop = 0;
+    for (var i = 0, l = lines.length; i < l; i++) {
+        styles[i] = {};
+        for (var j = 0, length = lines[i].length; j < length; j++) {
+            styles[i][j] = lines[i][j];
+            if (styles[i][j].left) {
+              spanLeft = styles[i][j].left;
+            }
+            if (styles[i][j].top) {
+              spanTop = styles[i][j].top;
+            }
+        }
+    }
+    textContent = textLines.join('\n');
+
+    options.styles = styles;
+    var text = new fabric.IText(textContent, options), textHeightScaleFactor = text.getScaledHeight() / text.height, lineHeightDiff = (text.height + text.strokeWidth) * text.lineHeight - text.height, scaledDiff = lineHeightDiff * textHeightScaleFactor, textHeight = text.getScaledHeight() + scaledDiff, offX = 0;
+    if (parsedAnchor === "center") {
+        offX = text.getScaledWidth() / 2;
+    }
+    if (parsedAnchor === "right") {
+        offX = text.getScaledWidth();
+    }
+    text.set({
+        left: text.left - offX + spanLeft,
+        top: text.top - (textHeight - text.fontSize * (.18 + text._fontSizeFraction)) / text.lineHeight + spanTop
+    });
+    callback(text);
   };
 })();
 

@@ -27,7 +27,15 @@ fabric.ElementsParser.prototype.createObjects = function() {
 };
 
 fabric.ElementsParser.prototype.createObject = function(el, index) {
-  var klass = fabric[fabric.util.string.capitalize(el.tagName.replace('svg:', ''))];
+  var tagName = fabric.util.string.capitalize(el.tagName.replace("svg:", ""));
+  if (el.children && el.children.length) {
+      for (var i = 0, l = el.children.length; i < l; i++) {
+          if (el.children[i].tagName == 'tspan') {
+              tagName = 'IText';
+          }
+      }
+  }
+  var klass = fabric[tagName];
   if (klass && klass.fromElement) {
     try {
       this._createObject(klass, el, index);
